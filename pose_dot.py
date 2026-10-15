@@ -28,7 +28,6 @@ HTML = r"""
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -125,12 +124,28 @@ HTML = r"""
     }
 
     ctx.drawImage(results.image, 0, 0, width, height);
-    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
-      {color: '#73e2a7', lineWidth: 4});
-    drawLandmarks(ctx, results.poseLandmarks,
-      {color: '#ffcf5a', lineWidth: 2, radius: 4});
 
     const points = results.poseLandmarks;
+
+    // Draw only the six shoulder, elbow, and wrist dots. No face landmarks or lines.
+    const trackedPoints = [
+      {index: 11, color: '#ffff00'}, // Left shoulder: yellow
+      {index: 12, color: '#ffff00'}, // Right shoulder: yellow
+      {index: 13, color: '#0000ff'}, // Left elbow: blue
+      {index: 14, color: '#0000ff'}, // Right elbow: blue
+      {index: 15, color: '#ff00ff'}, // Left wrist: magenta
+      {index: 16, color: '#ff00ff'}  // Right wrist: magenta
+    ];
+
+    trackedPoints.forEach(function (tracked) {
+      const point = points[tracked.index];
+      if (point && point.visibility > 0.35) {
+        ctx.beginPath();
+        ctx.arc(point.x * width, point.y * height, 7, 0, Math.PI * 2);
+        ctx.fillStyle = tracked.color;
+        ctx.fill();
+      }
+    });
     // MediaPipe Pose indices: right shoulder 12, right elbow 14, right wrist 16.
     const shoulder = points[12];
     const elbow = points[14];
@@ -194,10 +209,8 @@ HTML = r"""
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API unavailable. Open the HTTPS Streamlit app in a supported browser.');
       }
-      if (typeof Pose === 'undefined' ||
-          typeof drawConnectors === 'undefined' ||
-          typeof drawLandmarks === 'undefined') {
-        throw new Error('Pose scripts did not load. Refresh the page and check your internet connection.');
+      if (typeof Pose === 'undefined') {
+        throw new Error('The pose script did not load. Refresh the page and check your internet connection.');
       }
 
       stream = await navigator.mediaDevices.getUserMedia({
