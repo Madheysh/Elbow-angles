@@ -59,17 +59,27 @@
   const leftValue = document.querySelector("#left");
   const rightValue = document.querySelector("#right");
   let stream = null, landmarker = null, raf = 0, lastVideoTime = -1;
+  let smoothLeft = null, smoothRight = null;
 
+  // Measure the angle in the camera image plane, matching the visible arm pose.
+  // The result is the inside angle: a straight arm is approximately 180 degrees.
   function angle(a,b,c) {
-    const ba = [a.x-b.x, a.y-b.y, a.z-b.z];
-    const bc = [c.x-b.x, c.y-b.y, c.z-b.z];
-    const dot = ba.reduce((s,v,i)=>s+v*bc[i],0);
-    const magA = Math.hypot(...ba), magC = Math.hypot(...bc);
-    if (!magA || !magC) return null;
-    const cosine = Math.max(-1,Math.min(1,dot/(magA*magC)));
-    return Math.round(Math.acos(cosine)*180/Math.PI);
+    const baX = a.x - b.x, baY = a.y - b.y;
+    const bcX = c.x - b.x, bcY = c.y - b.y;
+    const denominator = Math.hypot(baX, baY) * Math.hypot(bcX, bcY);
+    if (denominator < 1e-8) return null;
+    const cosine = Math.max(-1, Math.min(1,
+      (baX * bcX + baY * bcY) / denominator));
+    return Math.acos(cosine) * 180 / Math.PI;
   }
-  function visible(lm) { return (lm?.visibility ?? 0) > 0.5; }
+  function visible(lm) { return (lm?.visibility ?? 0) > 0.55; }
+  function smoothAngle(previous, next) {
+    if (next === null) return previous;
+    return previous === null ? next : previous + 0.25 * (next - previous);
+  }
+  function formatAngle(value) {
+    return value === null ? "—°" : Math.round(value) + "°";
+  }
 
   async function setupModel() {
     if (landmarker) return landmarker;
@@ -129,12 +139,16 @@
           .filter(index => visible(lm[index]))
           .map(index => lm[index]);
         drawer.drawLandmarks(armLandmarks, {color:"#f8fafc",fillColor:"#3b82f6",lineWidth:1,radius:5});
-        const left = visible(lm[11]) && visible(lm[13]) && visible(lm[15]) ? angle(lm[11],lm[13],lm[15]) : null;
-        const right = visible(lm[12]) && visible(lm[14]) && visible(lm[16]) ? angle(lm[12],lm[14],lm[16]) : null;
-        leftValue.textContent = left === null ? "—°" : left + "°";
-        rightValue.textContent = right === null ? "—°" : right + "°";
-        status.textContent = "Tracking pose. Values appear when shoulder, elbow and wrist landmarks are visible.";
+        const rawLeft = visible(lm[11]) && visible(lm[13]) && visible(lm[15]) ? angle(lm[11],lm[13],lm[15]) : null;
+        const rawRight = visible(lm[12]) && visible(lm[14]) && visible(lm[16]) ? angle(lm[12],lm[14],lm[16]) : null;
+        // Smooth small frame-to-frame changes so the displayed readings are steadier.
+        smoothLeft = smoothAngle(smoothLeft, rawLeft);
+        smoothRight = smoothAngle(smoothRight, rawRight);
+        leftValue.textContent = formatAngle(rawLeft === null ? null : smoothLeft);
+        rightValue.textContent = formatAngle(rawRight === null ? null : smoothRight);
+        status.textContent = "Tracking. For the most accurate reading, turn slightly sideways and keep shoulder, elbow and wrist visible.";
       } else {
+        smoothLeft = smoothRight = null;
         leftValue.textContent = rightValue.textContent = "—°";
         status.textContent = "No pose detected. Move into frame and improve lighting.";
       }
@@ -149,6 +163,7 @@
     stream = null;
     video.srcObject = null;
     ctx.clearRect(0,0,canvas.width,canvas.height);
+    smoothLeft = smoothRight = null;
     leftValue.textContent = rightValue.textContent = "—°";
     placeholder.hidden = false;
     stopButton.disabled = true;
