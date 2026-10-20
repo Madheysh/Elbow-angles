@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>Elbow Angle Estimator</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0b1120;color:#e5e7eb}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#18253c 0,#0b1120 60%);padding:28px 16px}
+    main{max-width:980px;margin:0 auto}.eyebrow{color:#93c5fd;text-transform:uppercase;letter-spacing:.15em;font-size:.75rem;font-weight:700}
+    h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.05;margin:.55rem 0}.intro{color:#aab6ca;max-width:680px;line-height:1.6}
+    .panel{background:#111b2d;border:1px solid #29364b;border-radius:18px;padding:16px;margin-top:22px;box-shadow:0 16px 48px #0003}
+    .controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    button{border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer;background:#60a5fa;color:#081426}
+    button.secondary{background:#26354c;color:#e5e7eb}button:disabled{opacity:.55;cursor:not-allowed}
+    .stage{position:relative;overflow:hidden;border-radius:12px;background:#050914;aspect-ratio:16/9;display:grid;place-items:center}
+    video,canvas{position:absolute;width:100%;height:100%;inset:0;object-fit:contain;transform:scaleX(-1)}
+    video{opacity:0}canvas{z-index:2}.placeholder{color:#8794aa;text-align:center;padding:24px;max-width:400px;line-height:1.5}
+    .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+    .stat{background:#0b1322;border:1px solid #29364b;border-radius:12px;padding:14px}.label{font-size:.8rem;color:#9eacc1}.value{font-size:clamp(1.8rem,5vw,2.6rem);font-weight:750;letter-spacing:-.04em;margin-top:3px}
+    #status{font-size:.9rem;color:#aab6ca;margin-top:12px;line-height:1.5}.note{color:#8391a7;font-size:.82rem;line-height:1.5;margin-top:16px}
+    @media(max-width:560px){body{padding:20px 12px}.panel{padding:12px}.stage{aspect-ratio:4/3}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Browser-based pose tracking</div>
+  <h1>Elbow Angle Estimator</h1>
+  <p class="intro">Use your camera to estimate left and right elbow angles in real time. Pose landmarks are processed in your browser; the camera feed is not uploaded by this page.</p>
+  <section class="panel">
+    <div class="controls">
+      <button id="start">Start camera</button>
+      <button id="stop" class="secondary" disabled>Stop camera</button>
+    </div>
+    <div class="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div id="placeholder" class="placeholder">Press <strong>Start camera</strong>, allow camera access, and stand far enough back for your shoulders, elbows and wrists to be visible.</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="label">Left elbow</div><div class="value" id="left">—°</div></div>
+      <div class="stat"><div class="label">Right elbow</div><div class="value" id="right">—°</div></div>
+    </div>
+    <div id="status" role="status">Ready. Camera access is required to begin.</div>
+    <p class="note">For best results, use a modern browser over HTTPS, good lighting, and keep your upper body and arms in frame. Angles are estimates and may be unreliable when landmarks are occluded.</p>
+  </section>
+</main>
+<script type="module">
+  import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+  const video = document.querySelector("#video");
+  const canvas = document.querySelector("#canvas");
+  const ctx = canvas.getContext("2d");
+  const startButton = document.querySelector("#start");
+  const stopButton = document.querySelector("#stop");
+  const status = document.querySelector("#status");
+  const placeholder = document.querySelector("#placeholder");
+  const leftValue = document.querySelector("#left");
+  const rightValue = document.querySelector("#right");
+  let stream = null, landmarker = null, raf = 0, lastVideoTime = -1;
+
+  function angle(a,b,c) {
+    const ba = [a.x-b.x, a.y-b.y, a.z-b.z];
+    const bc = [c.x-b.x, c.y-b.y, c.z-b.z];
+    const dot = ba.reduce((s,v,i)=>s+v*bc[i],0);
+    const magA = Math.hypot(...ba), magC = Math.hypot(...bc);
+    if (!magA || !magC) return null;
+    const cosine = Math.max(-1,Math.min(1,dot/(magA*magC)));
+    return Math.round(Math.acos(cosine)*180/Math.PI);
+  }
+  function visible(lm) { return (lm?.visibility ?? 0) > 0.5; }
+
+  async function setupModel() {
+    if (landmarker) return landmarker;
+    status.textContent = "Loading pose model…";
+    const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    landmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task" },
+      runningMode: "VIDEO",
+      numPoses: 1
+    });
+    return landmarker;
+  }
+
+  async function start() {
+    startButton.disabled = true;
+    try {
+      await setupModel();
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:1280},height:{ideal:720}},audio:false});
+      video.srcObject = stream;
+      await video.play();
+      placeholder.hidden = true;
+      stopButton.disabled = false;
+      status.textContent = "Camera running. Keep both elbows and wrists visible.";
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      lastVideoTime = -1;
+      raf = requestAnimationFrame(loop);
+    } catch (err) {
+      stopCamera();
+      status.textContent = "Could not start: " + (err?.message || String(err)) + ". Check camera permission and internet access, then try again.";
+      startButton.disabled = false;
+    }
+  }
+
+  function loop() {
+    if (!stream || video.readyState < 2) { raf = requestAnimationFrame(loop); return; }
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      const result = landmarker.detectForVideo(video, performance.now());
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if (result.landmarks?.length) {
+        const lm = result.landmarks[0];
+        const connections = PoseLandmarker.POSE_CONNECTIONS;
+        const drawer = new DrawingUtils(ctx);
+        drawer.drawConnectors(lm, connections, {color:"#65d6ad",lineWidth:3});
+        drawer.drawLandmarks(lm, {color:"#f8fafc",fillColor:"#3b82f6",lineWidth:1,radius:4});
+        const left = visible(lm[11]) && visible(lm[13]) && visible(lm[15]) ? angle(lm[11],lm[13],lm[15]) : null;
+        const right = visible(lm[12]) && visible(lm[14]) && visible(lm[16]) ? angle(lm[12],lm[14],lm[16]) : null;
+        leftValue.textContent = left === null ? "—°" : left + "°";
+        rightValue.textContent = right === null ? "—°" : right + "°";
+        status.textContent = "Tracking pose. Values appear when shoulder, elbow and wrist landmarks are visible.";
+      } else {
+        leftValue.textContent = rightValue.textContent = "—°";
+        status.textContent = "No pose detected. Move into frame and improve lighting.";
+      }
+    }
+    raf = requestAnimationFrame(loop);
+  }
+
+  function stopCamera() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    video.srcObject = null;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    leftValue.textContent = rightValue.textContent = "—°";
+    placeholder.hidden = false;
+    stopButton.disabled = true;
+    startButton.disabled = false;
+    status.textContent = "Camera stopped.";
+  }
+  startButton.addEventListener("click", start);
+  stopButton.addEventListener("click", stopCamera);
+  window.addEventListener("pagehide", stopCamera);
+</script>
+</body>
+</html>
