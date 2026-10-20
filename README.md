@@ -2,8 +2,8 @@
 
 Estimate your left and right elbow angles in real time using your webcam. 
 
-https://elbowangles.netlify.app/
-> **Live demo:** Add your deployed Netlify URL here.
+
+> **Live demo:** https://elbowangles.netlify.app/
 
 ## Preview
 
