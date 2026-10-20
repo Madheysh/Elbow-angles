@@ -2,7 +2,7 @@
 
 Estimate your left and right elbow angles in real time using your webcam. 
 
-<!-- Replace this placeholder with the actual Netlify deployment URL before submitting. -->
+https://elbowangles.netlify.app/
 > **Live demo:** Add your deployed Netlify URL here.
 
 ## Preview
@@ -11,7 +11,6 @@ Start the camera to see the live feed with arm-only tracking and live angle read
 
 ## Features
 
-- **Live webcam view** with pose tracking drawn over the video.
 - **Left and right elbow angle estimates** displayed in degrees.
 - **Smoothed readings** to reduce rapid frame-to-frame fluctuations.
 - **Runs in the browser:** the page does not upload the camera feed to a project backend.
