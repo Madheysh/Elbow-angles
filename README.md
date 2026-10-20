@@ -1,6 +1,6 @@
 # Elbow Angle Estimator
 
-Estimate your left and right elbow angles in real time using your webcam. The app detects your shoulders, elbows, and wrists, then draws **only the two arm chains** over the live camera feed.
+Estimate your left and right elbow angles in real time using your webcam. 
 
 <!-- Replace this placeholder with the actual Netlify deployment URL before submitting. -->
 > **Live demo:** Add your deployed Netlify URL here.
@@ -13,7 +13,6 @@ Start the camera to see the live feed with arm-only tracking and live angle read
 
 - **Live webcam view** with pose tracking drawn over the video.
 - **Left and right elbow angle estimates** displayed in degrees.
-- **Arm-only overlay:** shoulder → elbow → wrist on each arm; no face, torso, or leg tracking lines.
 - **Smoothed readings** to reduce rapid frame-to-frame fluctuations.
 - **Runs in the browser:** the page does not upload the camera feed to a project backend.
 
@@ -47,8 +46,7 @@ Opening the HTML file directly may prevent camera access or module loading. Use 
 
 The app uses MediaPipe's browser-based Pose Landmarker to estimate body landmarks from each camera frame. It calculates the angle at each elbow from the shoulder, elbow, and wrist coordinates in the **2D camera image**. A small smoothing step makes the displayed values less jittery.
 
-Because this is a 2D estimate, camera perspective, body rotation, poor lighting, and hidden landmarks can affect accuracy. It is intended for visual estimation, not clinical or precision measurement.
-
+Because this is a 2D estimate, camera perspective, body rotation, poor lighting, and hidden landmarks can affect accuracy.
 ## Tech stack
 
 - HTML, CSS, and JavaScript
