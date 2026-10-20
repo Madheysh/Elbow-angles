@@ -16,7 +16,7 @@
     button.secondary{background:#26354c;color:#e5e7eb}button:disabled{opacity:.55;cursor:not-allowed}
     .stage{position:relative;overflow:hidden;border-radius:12px;background:#050914;aspect-ratio:16/9;display:grid;place-items:center}
     video,canvas{position:absolute;width:100%;height:100%;inset:0;object-fit:contain;transform:scaleX(-1)}
-    video{opacity:0}canvas{z-index:2}.placeholder{color:#8794aa;text-align:center;padding:24px;max-width:400px;line-height:1.5}
+    video{opacity:1}canvas{z-index:2;pointer-events:none}.placeholder{color:#8794aa;text-align:center;padding:24px;max-width:400px;line-height:1.5}
     .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
     .stat{background:#0b1322;border:1px solid #29364b;border-radius:12px;padding:14px}.label{font-size:.8rem;color:#9eacc1}.value{font-size:clamp(1.8rem,5vw,2.6rem);font-weight:750;letter-spacing:-.04em;margin-top:3px}
     #status{font-size:.9rem;color:#aab6ca;margin-top:12px;line-height:1.5}.note{color:#8391a7;font-size:.82rem;line-height:1.5;margin-top:16px}
@@ -112,10 +112,23 @@
       ctx.clearRect(0,0,canvas.width,canvas.height);
       if (result.landmarks?.length) {
         const lm = result.landmarks[0];
-        const connections = PoseLandmarker.POSE_CONNECTIONS;
+        // Draw only the two arm chains: shoulder → elbow → wrist.
+        // Do not draw the face, torso, legs, or any other pose connections.
+        const armConnections = [
+          { start: 11, end: 13 }, { start: 13, end: 15 },
+          { start: 12, end: 14 }, { start: 14, end: 16 }
+        ];
         const drawer = new DrawingUtils(ctx);
-        drawer.drawConnectors(lm, connections, {color:"#65d6ad",lineWidth:3});
-        drawer.drawLandmarks(lm, {color:"#f8fafc",fillColor:"#3b82f6",lineWidth:1,radius:4});
+        for (const connection of armConnections) {
+          const a = lm[connection.start], b = lm[connection.end];
+          if (visible(a) && visible(b)) {
+            drawer.drawConnectors(lm, [connection], {color:"#65d6ad",lineWidth:4});
+          }
+        }
+        const armLandmarks = [11, 12, 13, 14, 15, 16]
+          .filter(index => visible(lm[index]))
+          .map(index => lm[index]);
+        drawer.drawLandmarks(armLandmarks, {color:"#f8fafc",fillColor:"#3b82f6",lineWidth:1,radius:5});
         const left = visible(lm[11]) && visible(lm[13]) && visible(lm[15]) ? angle(lm[11],lm[13],lm[15]) : null;
         const right = visible(lm[12]) && visible(lm[14]) && visible(lm[16]) ? angle(lm[12],lm[14],lm[16]) : null;
         leftValue.textContent = left === null ? "—°" : left + "°";
